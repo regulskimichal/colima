@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/abiosoft/colima/app"
 	"github.com/abiosoft/colima/cli"
 	"github.com/abiosoft/colima/cmd/root"
 	"github.com/abiosoft/colima/config"
@@ -47,13 +48,14 @@ Run 'colima template' to set the default configurations or 'colima start --edit'
 		app := newApp()
 		conf := startCmdArgs.Config
 
+		if startCmdArgs.Flags.Foreground {
+			defer awaitForInterruption(&app)
+		}
+
 		if !startCmdArgs.Flags.Edit {
 			if app.Active() {
 				log.Warnln("already running, ignoring")
 				return nil
-			}
-			if startCmdArgs.Flags.Foreground {
-				defer awaitForInterruption()
 			}
 			return app.Start(conf)
 		}
@@ -451,10 +453,14 @@ func editConfigFile() error {
 	return configmanager.SaveFromFile(tmpFile)
 }
 
-func awaitForInterruption() {
+func awaitForInterruption(app *app.App) {
 	signalChannel := make(chan os.Signal, 1)
 	signal.Notify(signalChannel, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
-	log.Println("Keeping colima in the foreground, press ctrl+c to exit...")
+	log.Println("Keeping Colima in the foreground, press ctrl+c to exit...")
 	sig := <-signalChannel
 	log.Debug("Interrupted by:", sig)
+
+	if err := (*app).Stop(false); err != nil {
+		_ = fmt.Errorf("error stopping :%w", err)
+	}
 }
