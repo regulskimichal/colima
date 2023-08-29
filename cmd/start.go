@@ -3,8 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/abiosoft/colima/cli"
@@ -49,6 +51,9 @@ Run 'colima template' to set the default configurations or 'colima start --edit'
 			if app.Active() {
 				log.Warnln("already running, ignoring")
 				return nil
+			}
+			if startCmdArgs.Flags.Foreground {
+				defer awaitForInterruption()
 			}
 			return app.Start(conf)
 		}
@@ -126,6 +131,7 @@ var startCmdArgs struct {
 		Editor                  string
 		ActivateRuntime         bool
 		DNSHosts                []string
+		Foreground              bool
 	}
 }
 
@@ -145,6 +151,7 @@ func init() {
 	startCmd.Flags().IntVarP(&startCmdArgs.Memory, "memory", "m", defaultMemory, "memory in GiB")
 	startCmd.Flags().IntVarP(&startCmdArgs.Disk, "disk", "d", defaultDisk, "disk size in GiB")
 	startCmd.Flags().StringVarP(&startCmdArgs.Arch, "arch", "a", defaultArch, "architecture (aarch64, x86_64)")
+	startCmd.Flags().BoolVarP(&startCmdArgs.Flags.Foreground, "foreground", "f", false, "Keep colima in the foreground")
 
 	// network
 	if util.MacOS() {
@@ -442,4 +449,12 @@ func editConfigFile() error {
 		_ = os.Remove(tmpFile)
 	}()
 	return configmanager.SaveFromFile(tmpFile)
+}
+
+func awaitForInterruption() {
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	log.Println("Keeping colima in the foreground, press ctrl+c to exit...")
+	sig := <-signalChannel
+	log.Debug("Interrupted by:", sig)
 }
